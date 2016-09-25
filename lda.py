@@ -1,4 +1,12 @@
-class LDAVI():
+from sklearn.feature_extraction.text import CountVectorizer
+from nltk.corpus import stopwords, brown
+import itertools
+import string
+import numpy as np
+from scipy.special import gamma
+from scipy.special import digamma
+
+class LDA_VI():
     def __init__(self, docword, k=5, eta=0.01, alpha=0.01):
         '''
         m: document number
@@ -6,49 +14,40 @@ class LDAVI():
         alpha: Dirichlt prior for topic
         eta: Dirichlet prior for word
         beta: word distribution
-        theta: topic distribution
-        z: topic assignment
         lambda_: variational parameter governs eta
-        phi: variational parameter governs z
+        phi: variational parameter governs topic asgnment
         gamma_: variational parameter governs theta
         '''
+        self.k = k
         self.docword = docword
         self.m, self.v = np.shape(docword)
         self.eta = eta
         self.alpha = alpha
-        self.k = k
-        #self.theta = np.full((self.m, self.v), 0)
         self.phi = np.full((self.m, self.v, self.k), 1/self.k)
         self.gamma_ = np.full((self.m, self.k), self.alpha+self.v/self.k) 
         
-    def comp_theta(self, ):
-        return
-    
     def lgamma(self, var):
         return np.log(np.absolute(gamma(var)))
     
-    def updat_lambda_(self, eta, phi, docword):
+    def updat_lambda_(self, eta, phi, docword, num_doc, num_word, num_top):
         # shape(k, v)
-        lambda_ = eta + np.sum(phi, axis=0).T * np.sum(docword, axis=0)
-        #print ('lambda:', lambda_)
+        lambda_ = np.full((num_top, num_word), eta)
+        for doc_idx in range(num_doc):
+            lambda_ += phi[doc_idx].T * docword[doc_idx, :]
         return lambda_
 
     def updat_gamma_in_d(self, alpha, phi_in_d):
         # shape(1, k)
+        # prior of theta
         gamma_in_d = alpha + np.sum(phi_in_d, axis=0)
-        #print ('gamma:', gamma_in_d)
         return gamma_in_d
 
     def updat_phi_in_d(self, gamma_in_d, lambda_, v):
         t1 = digamma(np.tile(gamma_in_d, (v, 1)))
         t2 = digamma(lambda_).T
         t3 = digamma(np.tile(np.sum(lambda_, axis=1), (v, 1)))
-        print ('t1:', t1)
-        print ('t2:', t2)
-        print ('t3:', t3)
         phi_in_d = np.exp(t1+t2-t3)
-        phi_in_d /= np.sum(phi_in_d, axis=0)
-        #print ('phi:', phi_in_d)
+        phi_in_d /= np.sum(phi_in_d, axis=1).reshape(v, 1)
         return phi_in_d
                  
     def llh_d(self, gamma_in_d, alpha, k, document, phi_in_d, eta, lambda_):
@@ -80,15 +79,18 @@ class LDAVI():
         llh = t1 + t2 + t3 + t6 - t4 - t5 - t7
         return llh
     
-    def get_topic_words():
-        
-        return
+    def get_topic_words(self, lambda_, voc, k, num_word=10):
+        for top_idx in range(k):
+            topic_word_id = lambda_[top_idx, :].argsort()[-num_word:][::-1]
+            print ('Topic ', top_idx)
+            for id_ in topic_word_id:
+                print (voc[id_], ' ')
 
-    def run(self, tol=0.01, max_iter=1000):
+    def run(self, voc, tol=0.01, max_iter=1000):
         llh_old = 0
         for _ in range(max_iter):
             llh_new = 0
-            self.lambda_ = self.updat_lambda_(self.eta, self.phi, self.docword)
+            self.lambda_ = self.updat_lambda_(self.eta, self.phi, self.docword, self.m, self.v, self.k)
             for doc_idx in range(docword.shape[0]):
                 self.gamma_[doc_idx, :] = self.updat_gamma_in_d(self.alpha, self.phi[doc_idx, :, :])
                 self.phi[doc_idx, :, :] = self.updat_phi_in_d(self.gamma_[doc_idx, :], self.lambda_, self.v)
@@ -97,5 +99,6 @@ class LDAVI():
                 return
             else:
                 llh_old = llh_new
-            print (llh_new)
+
+            self.get_topic_words(self.lambda_, voc, self.k)
 
